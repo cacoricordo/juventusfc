@@ -44,7 +44,9 @@
   <div id="circle23" class="circle">01</div>
   <div id="circle24" class="circle"></div>
 
-  <canvas id="trace-canvas" width="600" height="300" style="position:absolute;left:20px;top:20px;z-index:10;pointer-events:none;border-radius:8px;background:transparent;"></canvas>
+<canvas id="trace-canvas" width="600" height="300"
+ style="position:absolute;left:20px;top:20px;z-index:10;border-radius:8px;background:transparent;">
+</canvas>
 
   <div id="ai-notification" style="display:none;position:fixed;bottom:40px;left:50%;transform:translateX(-50%);background:#33aaff;color:#fff;padding:18px 32px;border-radius:8px;z-index:10001;font-size:1.3em;box-shadow:0 2px 10px rgba(0,0,0,0.18);"></div>
 
@@ -61,7 +63,13 @@
 
   <!-- ===== Lógica do Campo e Botões ===== -->
   <script>
+const _traceCanvas = document.getElementById('trace-canvas');
+if (_traceCanvas) {
+  _traceCanvas.style.pointerEvents = 'none';
+  _traceCanvas.style.zIndex = '1';
+}
 const socket = io();
+window.socket = socket; // 🔌 torna o socket global
 const circles = {};
 const dragState = {};
 let activeId = null;
@@ -70,7 +78,10 @@ for (let i = 1; i <= 24; i++) {
   const el = document.getElementById("circle" + i);
   circles[i] = el;
   dragState[i] = { dragging: false, offsetX: 0, offsetY: 0 };
-
+if (el) {
+  el.style.position = el.style.position || 'absolute';
+  el.style.zIndex = '20';
+}
   // 🖱️ Mouse
   el.addEventListener("mousedown", (e) => {
     dragState[i].dragging = true;
@@ -137,21 +148,11 @@ document.addEventListener("touchend", endDrag);
 socket.on("update_circle", (data) => {
   moveElement(data.id, data.x, data.y);
 });
-    // === Desenho tático ===
-    const canvas = document.getElementById("trace-canvas");
-    const ctx = canvas.getContext("2d");
-    const penBtn = document.getElementById("pen-path-btn");
-    let drawing=false, penMode=false, path=[];
-    penBtn.addEventListener("click",()=>{penMode=!penMode;penBtn.style.background=penMode?"#33aaff":"#222";canvas.style.pointerEvents=penMode?"auto":"none";});
-    canvas.addEventListener("mousedown",e=>{if(!penMode)return;drawing=true;ctx.beginPath();ctx.moveTo(e.offsetX,e.offsetY);path=[[e.offsetX,e.offsetY]];});
-    canvas.addEventListener("mousemove",e=>{if(!drawing||!penMode)return;ctx.lineTo(e.offsetX,e.offsetY);ctx.strokeStyle="#ff3333";ctx.lineWidth=4;ctx.stroke();path.push([e.offsetX,e.offsetY]);});
-    canvas.addEventListener("mouseup",()=>{if(!drawing)return;drawing=false;ctx.closePath();socket.emit("path_draw",{path});});
-    socket.on("path_draw",data=>{ctx.beginPath();for(let i=0;i<data.path.length;i++){const [x,y]=data.path[i];if(i===0)ctx.moveTo(x,y);else ctx.lineTo(x,y);}ctx.strokeStyle="#ff3333";ctx.lineWidth=4;ctx.stroke();ctx.closePath();});
-
     // === Fullscreen ===
     const overlay=document.getElementById('fullscreen-overlay');
     const exitBtn=document.getElementById('exit-fullscreen-btn');
     const aiBtn=document.getElementById('ai-analise-btn');
+    const penBtn=document.getElementById('pen-path-btn');
     function updateButtons(){const show=document.fullscreenElement?'block':'none';exitBtn.style.display=show;aiBtn.style.display=show;penBtn.style.display=show;}
     document.addEventListener('fullscreenchange',updateButtons);
     overlay.addEventListener('click',async()=>{await document.documentElement.requestFullscreen();overlay.style.display='none';updateButtons();});
@@ -171,7 +172,169 @@ socket.on("update_circle", (data) => {
       this.disabled=false;this.textContent="AI Análise";
     });
   </script>
+<script>
+/* ===== Desenho Tático (Pointer Events + HiDPI) ===== */
+(function(){
+  const canvas = document.getElementById("trace-canvas");
+  const penBtn = document.getElementById("pen-path-btn");
+  const socket = window.socket; // usa a conexão global já aberta
+  if (!canvas) return;
+  const ctx = canvas.getContext("2d");
 
+  // Ajusta canvas para HiDPI / retina screens
+  function resizeCanvasForDisplay() {
+    const ratio = window.devicePixelRatio || 1;
+    const rect = canvas.getBoundingClientRect();
+    canvas.width = Math.round(rect.width * ratio);
+    canvas.height = Math.round(rect.height * ratio);
+    ctx.setTransform(ratio, 0, 0, ratio, 0, 0); // trabalhar em CSS pixels
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+  }
+  // chama agora e ao redimensionar
+  resizeCanvasForDisplay();
+  window.addEventListener('resize', () => {
+    // opcional: salva desenho? aqui limpamos ao redimensionar
+    // se preferir preservar, teria que reescalar e redesenhar paths
+    resizeCanvasForDisplay();
+  });
+
+  // Estado
+  let penMode = false;
+  let drawing = false;
+  let currentPath = [];
+  let pointerId = null;
+
+  // Ativa/desativa modo caneta
+penBtn.addEventListener('click', () => {
+  penMode = !penMode;
+  penBtn.style.background = penMode ? "#33aaff" : "#222";
+  canvas.style.pointerEvents = penMode ? "auto" : "none"; // libera os círculos quando desligado
+  penBtn.textContent = penMode ? "✎ Desenhando..." : "✎ Desenho Tático";
+
+  // Ajusta z-index dinamicamente
+  if (penMode) {
+    canvas.style.zIndex = "1000";  // fica acima dos círculos
+  } else {
+    canvas.style.zIndex = "1";     // fica abaixo, permitindo arrastar os jogadores
+  }
+});
+
+  // Garantir que pointer events funcionem: evitar comportamentos padrões
+  canvas.style.touchAction = "none"; // evita scroll durante desenho
+
+  // Helper para obter coords em CSS pixels (relativas ao canvas)
+  function getCoordFromEvent(evt) {
+    const rect = canvas.getBoundingClientRect();
+    // evt.clientX/Y são CSS pixels
+    const x = (evt.clientX !== undefined) ? (evt.clientX - rect.left) : (evt.touches ? evt.touches[0].clientX - rect.left : 0);
+    const y = (evt.clientY !== undefined) ? (evt.clientY - rect.top) : (evt.touches ? evt.touches[0].clientY - rect.top : 0);
+    return { x, y };
+  }
+
+  // Iniciar desenho (pointerdown)
+  canvas.addEventListener('pointerdown', (e) => {
+    if (!penMode) return;
+    // só responder a primary button / toque
+    if (e.isPrimary === false) return;
+    drawing = true;
+    pointerId = e.pointerId;
+    canvas.setPointerCapture(pointerId);
+
+    const { x, y } = getCoordFromEvent(e);
+    currentPath = [[x, y]]; // armazenar em CSS pixels
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+  });
+
+  // Movimentar (pointermove)
+  canvas.addEventListener('pointermove', (e) => {
+    if (!penMode || !drawing) return;
+    if (e.pointerId !== pointerId) return;
+    const { x, y } = getCoordFromEvent(e);
+    // desenha em CSS pixels diretamente porque já fizemos setTransform(ratio,...)
+    ctx.lineTo(x, y);
+    ctx.strokeStyle = "#ff3333";
+    ctx.lineWidth = 4;
+    ctx.stroke();
+    currentPath.push([x, y]);
+  });
+
+  // Finalizar (pointerup / cancel)
+  function finishDrawing(e) {
+    if (!drawing) return;
+    drawing = false;
+    try { canvas.releasePointerCapture(pointerId); } catch (er) {}
+    ctx.closePath();
+
+    // envia o path via socket (se existir)
+    if (socket && currentPath.length > 1) {
+      // enviar apenas alguns pontos para economizar (opcional)
+      socket.emit('path_draw', { path: currentPath });
+    }
+    currentPath = [];
+    pointerId = null;
+  }
+  canvas.addEventListener('pointerup', finishDrawing);
+  canvas.addEventListener('pointercancel', finishDrawing);
+  canvas.addEventListener('pointerout', (e) => {
+    // se o ponteiro sair do canvas podemos opcionalmente finalizar
+    if (drawing && e.pointerId === pointerId) finishDrawing(e);
+  });
+
+  // Fallbacks: se browser não suportar pointer events, garante touch/mouse
+  // (a maioria dos browsers modernos já suporta pointer events)
+  // --- não necessário adicionar se suportado, mas mantemos por segurança ---
+  // Para compatibilidade, mantemos também eventos touch/mouse:
+  canvas.addEventListener('touchstart', (e) => {
+    if (!penMode) return;
+    e.preventDefault();
+    const t = e.touches[0];
+    const rect = canvas.getBoundingClientRect();
+    drawing = true;
+    currentPath = [[t.clientX - rect.left, t.clientY - rect.top]];
+    ctx.beginPath();
+    ctx.moveTo(t.clientX - rect.left, t.clientY - rect.top);
+  }, { passive: false });
+
+  canvas.addEventListener('touchmove', (e) => {
+    if (!penMode || !drawing) return;
+    e.preventDefault();
+    const t = e.touches[0];
+    const rect = canvas.getBoundingClientRect();
+    const x = t.clientX - rect.left, y = t.clientY - rect.top;
+    ctx.lineTo(x, y);
+    ctx.strokeStyle = "#ff3333"; ctx.lineWidth = 4; ctx.stroke();
+    currentPath.push([x, y]);
+  }, { passive: false });
+
+  canvas.addEventListener('touchend', (e) => {
+    if (!penMode || !drawing) return;
+    e.preventDefault();
+    drawing = false;
+    ctx.closePath();
+    if (socket && currentPath.length > 1) socket.emit('path_draw', { path: currentPath });
+    currentPath = [];
+  }, { passive: false });
+
+  // Recebe path desenhados por outros clientes e desenha
+  if (socket) {
+    socket.on('path_draw', (data) => {
+      if (!data || !Array.isArray(data.path) || data.path.length === 0) return;
+      ctx.beginPath();
+      for (let i = 0; i < data.path.length; i++) {
+        const [x, y] = data.path[i];
+        if (i === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      }
+      ctx.strokeStyle = "#ff3333";
+      ctx.lineWidth = 4;
+      ctx.stroke();
+      ctx.closePath();
+    });
+  }
+})();
+</script>
   <!-- ===== Chat do Treinador Português ===== -->
   <div id="coach-chat" style="position:fixed;bottom:20px;right:20px;width:320px;height:420px;background:rgba(30,30,30,0.95);border:2px solid #444;border-radius:12px;display:flex;flex-direction:column;font-family:sans-serif;color:#fff;z-index:12000;transition:all .4s ease;">
     <div style="display:flex;justify-content:space-between;align-items:center;padding:10px;background:#222;border-bottom:1px solid #555;">
