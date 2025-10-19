@@ -61,34 +61,82 @@
 
   <!-- ===== Lógica do Campo e Botões ===== -->
   <script>
-    const socket = io();
-    const circles = {}; const dragState = {};
-    for (let i = 1; i <= 24; i++) {
-      const el = document.getElementById('circle' + i);
-      circles[i] = el; dragState[i] = { dragging:false, offsetX:0, offsetY:0 };
-      el.addEventListener('mousedown', e => {
-        dragState[i].dragging = true;
-        dragState[i].offsetX = e.offsetX; dragState[i].offsetY = e.offsetY;
-        window.activeCircleId = i;
-      });
-      el.addEventListener('mouseup', () => dragState[i].dragging = false);
-    }
-    document.addEventListener('mousemove', e => {
-      for (let i = 1; i <= 24; i++) {
-        if (dragState[i].dragging && window.activeCircleId === i) {
-          let x = e.clientX - dragState[i].offsetX;
-          let y = e.clientY - dragState[i].offsetY;
-          circles[i].style.left = x + 'px';
-          circles[i].style.top = y + 'px';
-          socket.emit('move_circle', {x,y,id:i});
-        }
-      }
-    });
-    socket.on('update_circle', data => {
-      const el = circles[data.id];
-      if (el) { el.style.left = data.x+'px'; el.style.top = data.y+'px'; }
-    });
+const socket = io();
+const circles = {};
+const dragState = {};
+let activeId = null;
 
+for (let i = 1; i <= 24; i++) {
+  const el = document.getElementById("circle" + i);
+  circles[i] = el;
+  dragState[i] = { dragging: false, offsetX: 0, offsetY: 0 };
+
+  // 🖱️ Mouse
+  el.addEventListener("mousedown", (e) => {
+    dragState[i].dragging = true;
+    dragState[i].offsetX = e.offsetX;
+    dragState[i].offsetY = e.offsetY;
+    activeId = i;
+  });
+
+  // 📱 Touch
+  el.addEventListener("touchstart", (e) => {
+    const touch = e.touches[0];
+    const rect = el.getBoundingClientRect();
+    dragState[i].dragging = true;
+    dragState[i].offsetX = touch.clientX - rect.left;
+    dragState[i].offsetY = touch.clientY - rect.top;
+    activeId = i;
+    e.preventDefault(); // evita scroll
+  }, { passive: false });
+}
+
+// === Movimentos ===
+function moveElement(id, x, y) {
+  const el = circles[id];
+  if (el) {
+    el.style.left = x + "px";
+    el.style.top = y + "px";
+  }
+}
+
+// 🖱️ Mouse move
+document.addEventListener("mousemove", (e) => {
+  if (!activeId) return;
+  const i = activeId;
+  const x = e.clientX - dragState[i].offsetX;
+  const y = e.clientY - dragState[i].offsetY;
+  moveElement(i, x, y);
+  socket.emit("move_circle", { x, y, id: i });
+});
+
+// 📱 Touch move
+document.addEventListener("touchmove", (e) => {
+  if (!activeId) return;
+  const i = activeId;
+  const touch = e.touches[0];
+  const rect = circles[i].getBoundingClientRect();
+  const x = touch.clientX - dragState[i].offsetX;
+  const y = touch.clientY - dragState[i].offsetY;
+  moveElement(i, x, y);
+  socket.emit("move_circle", { x, y, id: i });
+  e.preventDefault(); // evita scroll
+}, { passive: false });
+
+// 🖱️ / 📱 Fim do arrasto
+function endDrag() {
+  if (activeId) {
+    dragState[activeId].dragging = false;
+    activeId = null;
+  }
+}
+document.addEventListener("mouseup", endDrag);
+document.addEventListener("touchend", endDrag);
+
+// === Receber atualizações ===
+socket.on("update_circle", (data) => {
+  moveElement(data.id, data.x, data.y);
+});
     // === Desenho tático ===
     const canvas = document.getElementById("trace-canvas");
     const ctx = canvas.getContext("2d");
