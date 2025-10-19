@@ -8,7 +8,7 @@ const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
 const bodyParser = require('body-parser');
-const fetch = require('node-fetch');
+const fetch = (...args) => import('node-fetch').then(({default: fetch}) => fetch(...args));
 
 const app = express();
 const server = http.createServer(app);
@@ -68,48 +68,47 @@ app.post('/ai/analyze', (req, res) => {
 
   res.json({ red });
 });
-
 // ==========================
-//  Rota /api/chat – Chat estilo Mourinho
+//  Rota /api/chat – Chat estilo Mourinho (via OpenRouter)
 // ==========================
 app.post('/api/chat', async (req, res) => {
   const message = req.body.message;
-  const apiKey = process.env.RAPIDAPI_KEY;
+  const apiKey = process.env.OPENROUTER_KEY;
 
   if (!apiKey) {
     return res.status(500).json({
-      reply: "Erro interno: RAPIDAPI_KEY não configurada no servidor."
+      reply: "Erro interno: OPENROUTER_KEY não configurada."
     });
   }
 
   try {
-    const rapidResponse = await fetch("https://chatgpt-42.p.rapidapi.com/conversationgpt4", {
+    const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
       method: "POST",
       headers: {
-        "content-type": "application/json",
-        "X-RapidAPI-Key": apiKey,
-        "X-RapidAPI-Host": "chatgpt-42.p.rapidapi.com"
+        "Authorization": `Bearer ${apiKey}`,
+        "Content-Type": "application/json"
       },
       body: JSON.stringify({
+        model: "gpt-4o-mini", // leve e rápido
         messages: [
           {
             role: "system",
-            content: "Tu és um treinador português de elite, sarcástico, confiante e direto. Foste campeão no Porto, Chelsea, Inter, Real Madrid e Manchester United. Usa frases curtas, ironia e autoridade."
+            content: "Tu és um treinador português lendário, sarcástico, confiante e direto. Foste campeão no Porto, Chelsea, Inter, Real Madrid e Manchester United. Fala com autoridade, ironia e sempre como se fosses o centro das atenções."
           },
           { role: "user", content: message }
         ],
-        max_tokens: 150
+        max_tokens: 200,
+        temperature: 0.9
       }),
     });
 
-    const result = await rapidResponse.json();
-    const reply = result.result || result.message || "O mister não tem tempo pra conversa fiada.";
-
+    const data = await response.json();
+    const reply = data.choices?.[0]?.message?.content?.trim() || "O mister não tem tempo pra conversa fiada.";
     console.log("🧠 Chatbot respondeu:", reply);
     res.json({ reply });
   } catch (err) {
-    console.error("Erro no RapidAPI:", err);
-    res.json({ reply: "O mister não respondeu... provavelmente está irritado com o árbitro." });
+    console.error("Erro no OpenRouter:", err);
+    res.json({ reply: "O mister não respondeu... deve estar irritado com o árbitro." });
   }
 });
 
