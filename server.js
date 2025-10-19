@@ -6,17 +6,41 @@
 require('dotenv').config();
 const express = require('express');
 const http = require('http');
+const cors = require('cors');
 const { Server } = require('socket.io');
 const bodyParser = require('body-parser');
-const fetch = (...args) => import('node-fetch').then(({default: fetch}) => fetch(...args));
+const fetch = (...args) => import('node-fetch').then(({ default: fetch }) => fetch(...args));
 
 const app = express();
-const server = http.createServer(app);
-const io = new Server(server);
 
-// ==========================
-//  Socket.IO – Sincroniza posições e desenhos no campo
-// ==========================
+// ======= ⚙️ CORS GLOBAL =======
+app.use((req, res, next) => {
+  res.header("Access-Control-Allow-Origin", "*"); // ✅ Permite tudo
+  res.header("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+  res.header("Access-Control-Allow-Headers", "Content-Type, Authorization");
+  if (req.method === "OPTIONS") {
+    return res.sendStatus(200);
+  }
+  next();
+});
+
+app.use(cors());
+app.use(bodyParser.json());
+app.use(express.static(__dirname));
+
+const server = http.createServer(app);
+
+// ======= ⚽ Socket.IO =======
+const io = new Server(server, {
+  transports: ["websocket", "polling"], // força compatibilidade com Render
+  cors: {
+    origin: "*", // ✅ libera todos os domínios
+    methods: ["GET", "POST"],
+    allowedHeaders: ["Content-Type", "Authorization"],
+    credentials: true
+  }
+});
+
 io.on('connection', (socket) => {
   console.log('🔌 Novo cliente conectado');
 
@@ -33,21 +57,11 @@ io.on('connection', (socket) => {
   });
 });
 
-// ==========================
-//  Middleware e assets
-// ==========================
-app.use(bodyParser.json());
-app.use(express.static(__dirname));
-
-// ==========================
-//  Rota /ai/analyze – posicionamento do time
-// ==========================
+// ======= 🤖 AI Análise =======
 app.post('/ai/analyze', (req, res) => {
-  const ball = req.body.ball;
-  const green = req.body.green;
+  const { ball, green } = req.body;
   const red = [];
 
-  // Gera posições do time vermelho espelhando o verde
   for (let i = 0; i < 10; i++) {
     const g = green[i];
     if (g) {
@@ -59,7 +73,6 @@ app.post('/ai/analyze', (req, res) => {
     }
   }
 
-  // Faz o atacante marcar o jogador com a bola
   red[8] = {
     id: 21,
     left: ball.left - 9,
@@ -68,17 +81,14 @@ app.post('/ai/analyze', (req, res) => {
 
   res.json({ red });
 });
-// ==========================
-//  Rota /api/chat – Chat estilo Mourinho (via OpenRouter)
-// ==========================
+
+// ======= 🧠 Chat (OpenRouter) =======
 app.post('/api/chat', async (req, res) => {
   const message = req.body.message;
   const apiKey = process.env.OPENROUTER_KEY;
 
   if (!apiKey) {
-    return res.status(500).json({
-      reply: "Erro interno: OPENROUTER_KEY não configurada."
-    });
+    return res.status(500).json({ reply: "Erro interno: OPENROUTER_KEY não configurada." });
   }
 
   try {
@@ -89,11 +99,12 @@ app.post('/api/chat', async (req, res) => {
         "Content-Type": "application/json"
       },
       body: JSON.stringify({
-        model: "gpt-4o-mini", // leve e rápido
+        model: "gpt-4o-mini",
         messages: [
           {
             role: "system",
-            content: "Tu és um treinador português lendário, sarcástico, confiante e direto. Foste campeão no Porto, Chelsea, Inter, Real Madrid e Manchester United. Fala com autoridade, ironia e sempre como se fosses o centro das atenções."
+            content:
+              "Tu és um treinador português lendário, sarcástico, confiante e direto. Foste campeão no Porto, Chelsea, Inter, Real Madrid e Manchester United. Fala com autoridade, ironia e sempre como se fosses o centro das atenções."
           },
           { role: "user", content: message }
         ],
@@ -103,8 +114,9 @@ app.post('/api/chat', async (req, res) => {
     });
 
     const data = await response.json();
-    const reply = data.choices?.[0]?.message?.content?.trim() || "O mister não tem tempo pra conversa fiada.";
-    console.log("🧠 Chatbot respondeu:", reply);
+    const reply =
+      data.choices?.[0]?.message?.content?.trim() ||
+      "O mister não tem tempo pra conversa fiada.";
     res.json({ reply });
   } catch (err) {
     console.error("Erro no OpenRouter:", err);
@@ -112,9 +124,7 @@ app.post('/api/chat', async (req, res) => {
   }
 });
 
-// ==========================
-//  Inicia servidor
-// ==========================
+// ======= 🚀 Start =======
 const PORT = process.env.PORT || 10000;
 server.listen(PORT, () => {
   console.log(`🏟️  Servidor rodando na porta ${PORT}`);
