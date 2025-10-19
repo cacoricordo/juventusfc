@@ -90,5 +90,34 @@ app.post('/api/chat', async (req, res) => {
         "X-RapidAPI-Key": apiKey,
         "X-RapidAPI-Host": "chatgpt-42.p.rapidapi.com"
       },
-      body: JSON.str
+      body: JSON.stringify({
+        messages: [
+          {
+            role: "system",
+            content: "Tu és um treinador português de elite, sarcástico, confiante e direto. Foste campeão no Porto, Chelsea, Inter, Real Madrid e Manchester United. Usa frases curtas, ironia e autoridade."
+          },
+          { role: "user", content: message }
+        ],
+        max_tokens: 150
+      }),
+    });
+
+    const result = await rapidResponse.json();
+    const reply = result.result || result.message || "O mister não tem tempo pra conversa fiada.";
+
+    console.log("🧠 Chatbot respondeu:", reply);
+    res.json({ reply });
+  } catch (err) {
+    console.error("Erro no RapidAPI:", err);
+    res.json({ reply: "O mister não respondeu... provavelmente está irritado com o árbitro." });
+  }
+});
+
+// ==========================
+//  Inicia servidor
+// ==========================
+const PORT = process.env.PORT || 10000;
+server.listen(PORT, () => {
+  console.log(`🏟️  Servidor rodando na porta ${PORT}`);
+});
 
