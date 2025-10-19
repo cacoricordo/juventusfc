@@ -9,11 +9,24 @@
 <body style="background-image:url('https://juventusfc.onrender.com/img/estadium.jpg'); background-size:cover; background-repeat:no-repeat; background-position:center;">
 
   <!-- ===== Campo Tático ===== -->
-  <div id="background-square" class="background-square"></div>
-  <div id="background-line"></div><div id="background-line2"></div><div id="background-line3"></div>
-  <div id="background-line4"></div><div id="background-line5"></div><div id="background-line6"></div>
-  <div id="background-line7"></div><div id="background-line8"></div><div id="background-line9"></div>
-
+    <div id="background-square" class="background-square"></div>
+    <div id="background-line"></div>
+    <div id="background-line2"></div>
+    <div id="background-line3"></div>
+    <div id="background-line4"></div>
+    <div id="background-line5"></div>
+    <div id="background-line6"></div>
+    <div id="background-line7"></div>
+    <div id="background-line8"></div>
+    <div id="background-line9"></div>
+    <div id="background-line10"></div>
+    <div id="background-line11"></div>
+    <div id="background-line12"></div>
+    <div id="background-line13"></div>
+    <div id="background-line14"></div>
+    <div id="background-line15"></div>
+    <div id="background-line16"></div>
+    <div id="background-line17"></div>
   <div id="circle12" class="circlecentral" style="background:transparent;left:237px;top:100px;border:2px solid #fff;"></div>
   <div id="gol-square" class="gol-square"></div>
   <div id="gol2-square" class="gol2-square"></div>
@@ -173,86 +186,95 @@ socket.on("update_circle", (data) => {
     });
   </script>
 <script>
-/* ===== Desenho Tático (Pointer Events + HiDPI) ===== */
+/* ===== Desenho Tático: correção para offset mobile (HiDPI + CSS size sync) ===== */
 (function(){
   const canvas = document.getElementById("trace-canvas");
   const penBtn = document.getElementById("pen-path-btn");
-  const socket = window.socket; // usa a conexão global já aberta
+  const socket = window.socket || (window.io ? io() : null);
   if (!canvas) return;
   const ctx = canvas.getContext("2d");
 
-  // Ajusta canvas para HiDPI / retina screens
+  // Faz o canvas ocupar um tamanho CSS estável (se quiser, ajuste aqui)
+  // Se preferir que o canvas seja responsivo, ajuste o CSS; aqui usamos o rect atual.
   function resizeCanvasForDisplay() {
     const ratio = window.devicePixelRatio || 1;
+    // pega o tamanho CSS real do canvas (dependendo do layout)
     const rect = canvas.getBoundingClientRect();
+
+    // forçar CSS width/height para o tamanho do rect (garante consistência)
+    canvas.style.width = rect.width + "px";
+    canvas.style.height = rect.height + "px";
+
+    // ajusta o buffer físico do canvas para HiDPI
     canvas.width = Math.round(rect.width * ratio);
     canvas.height = Math.round(rect.height * ratio);
-    ctx.setTransform(ratio, 0, 0, ratio, 0, 0); // trabalhar em CSS pixels
+
+    // faz o ctx trabalhar em CSS pixels (transforma coords automaticamente)
+    ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
     ctx.lineCap = "round";
     ctx.lineJoin = "round";
   }
-  // chama agora e ao redimensionar
-  resizeCanvasForDisplay();
-  window.addEventListener('resize', () => {
-    // opcional: salva desenho? aqui limpamos ao redimensionar
-    // se preferir preservar, teria que reescalar e redesenhar paths
-    resizeCanvasForDisplay();
-  });
 
-  // Estado
+  // chama no load e quando a viewport muda
+  resizeCanvasForDisplay();
+  window.addEventListener('resize', resizeCanvasForDisplay);
+  // também quando há rolagem (às vezes rect muda por UI do navegador)
+  window.addEventListener('scroll', () => {
+    // atualização leve — só se o canvas estiver visível
+    resizeCanvasForDisplay();
+  }, { passive: true });
+
+  // estado
   let penMode = false;
   let drawing = false;
   let currentPath = [];
   let pointerId = null;
 
-  // Ativa/desativa modo caneta
-penBtn.addEventListener('click', () => {
-  penMode = !penMode;
-  penBtn.style.background = penMode ? "#33aaff" : "#222";
-  canvas.style.pointerEvents = penMode ? "auto" : "none"; // libera os círculos quando desligado
-  penBtn.textContent = penMode ? "✎ Desenhando..." : "✎ Desenho Tático";
+  // Toggle pen button: ativa/desativa captura de eventos
+  penBtn.addEventListener('click', () => {
+    penMode = !penMode;
+    penBtn.style.background = penMode ? "#33aaff" : "#222";
+    canvas.style.pointerEvents = penMode ? "auto" : "none";
+    penBtn.textContent = penMode ? "✎ Desenhando..." : "✎ Desenho Tático";
+    if (penMode) {
+      canvas.style.zIndex = "1000";
+    } else {
+      canvas.style.zIndex = "1";
+    }
+  });
 
-  // Ajusta z-index dinamicamente
-  if (penMode) {
-    canvas.style.zIndex = "1000";  // fica acima dos círculos
-  } else {
-    canvas.style.zIndex = "1";     // fica abaixo, permitindo arrastar os jogadores
-  }
-});
+  // evita scroll durante desenho
+  canvas.style.touchAction = "none";
 
-  // Garantir que pointer events funcionem: evitar comportamentos padrões
-  canvas.style.touchAction = "none"; // evita scroll durante desenho
-
-  // Helper para obter coords em CSS pixels (relativas ao canvas)
+  // converte evento -> coordenada em CSS pixels relativa ao canvas
   function getCoordFromEvent(evt) {
     const rect = canvas.getBoundingClientRect();
-    // evt.clientX/Y são CSS pixels
-    const x = (evt.clientX !== undefined) ? (evt.clientX - rect.left) : (evt.touches ? evt.touches[0].clientX - rect.left : 0);
-    const y = (evt.clientY !== undefined) ? (evt.clientY - rect.top) : (evt.touches ? evt.touches[0].clientY - rect.top : 0);
-    return { x, y };
+    // pointer events: clientX/clientY
+    if (evt.clientX !== undefined && evt.clientY !== undefined) {
+      return { x: evt.clientX - rect.left, y: evt.clientY - rect.top };
+    }
+    // touch fallback
+    if (evt.touches && evt.touches[0]) {
+      return { x: evt.touches[0].clientX - rect.left, y: evt.touches[0].clientY - rect.top };
+    }
+    return { x: 0, y: 0 };
   }
 
-  // Iniciar desenho (pointerdown)
+  // pointer events (recomendado)
   canvas.addEventListener('pointerdown', (e) => {
-    if (!penMode) return;
-    // só responder a primary button / toque
-    if (e.isPrimary === false) return;
+    if (!penMode || !e.isPrimary) return;
     drawing = true;
     pointerId = e.pointerId;
-    canvas.setPointerCapture(pointerId);
-
+    try { canvas.setPointerCapture(pointerId); } catch (er) {}
     const { x, y } = getCoordFromEvent(e);
-    currentPath = [[x, y]]; // armazenar em CSS pixels
+    currentPath = [[x, y]];
     ctx.beginPath();
     ctx.moveTo(x, y);
   });
 
-  // Movimentar (pointermove)
   canvas.addEventListener('pointermove', (e) => {
-    if (!penMode || !drawing) return;
-    if (e.pointerId !== pointerId) return;
+    if (!penMode || !drawing || e.pointerId !== pointerId) return;
     const { x, y } = getCoordFromEvent(e);
-    // desenha em CSS pixels diretamente porque já fizemos setTransform(ratio,...)
     ctx.lineTo(x, y);
     ctx.strokeStyle = "#ff3333";
     ctx.lineWidth = 4;
@@ -260,52 +282,44 @@ penBtn.addEventListener('click', () => {
     currentPath.push([x, y]);
   });
 
-  // Finalizar (pointerup / cancel)
   function finishDrawing(e) {
     if (!drawing) return;
     drawing = false;
     try { canvas.releasePointerCapture(pointerId); } catch (er) {}
     ctx.closePath();
-
-    // envia o path via socket (se existir)
     if (socket && currentPath.length > 1) {
-      // enviar apenas alguns pontos para economizar (opcional)
       socket.emit('path_draw', { path: currentPath });
     }
     currentPath = [];
     pointerId = null;
   }
+
   canvas.addEventListener('pointerup', finishDrawing);
   canvas.addEventListener('pointercancel', finishDrawing);
   canvas.addEventListener('pointerout', (e) => {
-    // se o ponteiro sair do canvas podemos opcionalmente finalizar
     if (drawing && e.pointerId === pointerId) finishDrawing(e);
   });
 
-  // Fallbacks: se browser não suportar pointer events, garante touch/mouse
-  // (a maioria dos browsers modernos já suporta pointer events)
-  // --- não necessário adicionar se suportado, mas mantemos por segurança ---
-  // Para compatibilidade, mantemos também eventos touch/mouse:
+  // touch fallback (mantém compatibilidade)
   canvas.addEventListener('touchstart', (e) => {
     if (!penMode) return;
     e.preventDefault();
-    const t = e.touches[0];
-    const rect = canvas.getBoundingClientRect();
+    const c = getCoordFromEvent(e);
     drawing = true;
-    currentPath = [[t.clientX - rect.left, t.clientY - rect.top]];
+    currentPath = [[c.x, c.y]];
     ctx.beginPath();
-    ctx.moveTo(t.clientX - rect.left, t.clientY - rect.top);
+    ctx.moveTo(c.x, c.y);
   }, { passive: false });
 
   canvas.addEventListener('touchmove', (e) => {
     if (!penMode || !drawing) return;
     e.preventDefault();
-    const t = e.touches[0];
-    const rect = canvas.getBoundingClientRect();
-    const x = t.clientX - rect.left, y = t.clientY - rect.top;
-    ctx.lineTo(x, y);
-    ctx.strokeStyle = "#ff3333"; ctx.lineWidth = 4; ctx.stroke();
-    currentPath.push([x, y]);
+    const c = getCoordFromEvent(e);
+    ctx.lineTo(c.x, c.y);
+    ctx.strokeStyle = "#ff3333";
+    ctx.lineWidth = 4;
+    ctx.stroke();
+    currentPath.push([c.x, c.y]);
   }, { passive: false });
 
   canvas.addEventListener('touchend', (e) => {
@@ -317,15 +331,14 @@ penBtn.addEventListener('click', () => {
     currentPath = [];
   }, { passive: false });
 
-  // Recebe path desenhados por outros clientes e desenha
+  // recebe e desenha paths de outros clientes (coord em CSS pixels)
   if (socket) {
     socket.on('path_draw', (data) => {
       if (!data || !Array.isArray(data.path) || data.path.length === 0) return;
       ctx.beginPath();
       for (let i = 0; i < data.path.length; i++) {
         const [x, y] = data.path[i];
-        if (i === 0) ctx.moveTo(x, y);
-        else ctx.lineTo(x, y);
+        if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
       }
       ctx.strokeStyle = "#ff3333";
       ctx.lineWidth = 4;
