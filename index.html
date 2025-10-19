@@ -81,7 +81,7 @@ if (_traceCanvas) {
   _traceCanvas.style.pointerEvents = 'none';
   _traceCanvas.style.zIndex = '1';
 }
-const socket = io();
+const socket = io("https://juventusfc.onrender.com");
 window.socket = socket; // 🔌 torna o socket global
 const circles = {};
 const dragState = {};
@@ -179,7 +179,7 @@ socket.on("update_circle", (data) => {
     aiBtn.addEventListener('click',async function(){
       this.disabled=true;this.textContent="Analisando...";
       try{
-        const res=await fetch('/ai/analyze',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({green:getPositions('circle'),ball:getBall()})});
+        const res=await fetch('https://juventusfc.onrender.com/ai/analyze',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({green:getPositions('circle'),ball:getBall()})});
         const data=await res.json();if(data.red){setPositions(data.red);notify("AI posicionou o time vermelho!");}
       }catch(e){notify("Erro na análise.");}
       this.disabled=false;this.textContent="AI Análise";
@@ -373,7 +373,7 @@ socket.on("update_circle", (data) => {
       const personality=`És um treinador português lendário, sarcástico, confiante e direto. Foste campeão no Porto, Chelsea, Inter, Real Madrid e Manchester United. Fala com autoridade e ironia.`;
       const prompt=`${personality}\n\nJogador: ${userText}\nTreinador:`;
       try{
-        const r=await fetch("/api/chat",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({message:prompt})});
+        const r=await fetch("https://juventusfc.onrender.com/api/chat",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({message:prompt})});
         const d=await r.json();
         addMessage("Treinador",d.reply||"O mister não tem tempo pra conversa fiada.");
       }catch{addMessage("Treinador","Tás a brincar comigo? Falha na ligação.");}
