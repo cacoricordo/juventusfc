@@ -1,4 +1,8 @@
-// server.js (v3.1) — OS INVICTOS
+// ==========================
+//  OS INVICTOS SERVER ⚽
+//  Integra campo tático + AI + Chat do "Treinador Português"
+// ==========================
+
 require('dotenv').config();
 const express = require('express');
 const http = require('http');
@@ -9,32 +13,38 @@ const fetch = (...args) => import('node-fetch').then(({ default: fetch }) => fet
 
 const app = express();
 
-// ===== middlewares =====
+// ======= ⚙️ CORS GLOBAL =======
 app.use((req, res, next) => {
-  res.header("Access-Control-Allow-Origin", "*");
+  res.header("Access-Control-Allow-Origin", "*"); // ✅ Permite tudo
   res.header("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
   res.header("Access-Control-Allow-Headers", "Content-Type, Authorization");
-  if (req.method === "OPTIONS") return res.sendStatus(200);
+  if (req.method === "OPTIONS") {
+    return res.sendStatus(200);
+  }
   next();
 });
-app.options('*', cors());
+
 app.use(cors());
-app.use(bodyParser.json({ limit: '1mb' }));
+app.use(bodyParser.json());
 app.use(express.static(__dirname));
 
 const server = http.createServer(app);
 
-// ===== Socket.IO =====
+// ======= ⚽ Socket.IO =======
 const io = new Server(server, {
-  transports: ["websocket", "polling"],
-  cors: { origin: "*", methods: ["GET", "POST"] }
+  transports: ["websocket", "polling"], // força compatibilidade com Render
+  cors: {
+    origin: "*", // ✅ libera todos os domínios
+    methods: ["GET", "POST"],
+    allowedHeaders: ["Content-Type", "Authorization"],
+    credentials: true
+  }
 });
 
 io.on('connection', (socket) => {
-  console.log('🔌 Novo cliente conectado (socket id:', socket.id, ')');
+  console.log('🔌 Novo cliente conectado');
 
   socket.on('move_circle', (data) => {
-    // broadcast raw update to other clients
     socket.broadcast.emit('update_circle', data);
   });
 
@@ -43,10 +53,11 @@ io.on('connection', (socket) => {
   });
 
   socket.on('disconnect', () => {
-    console.log('❌ Cliente desconectado (socket id:', socket.id, ')');
+    console.log('❌ Cliente desconectado');
   });
 });
 
+// ======= 🤖 AI Análise 3.0 =======
 // ===== Tática / util =====
 const FIELD_WIDTH = 600;
 const FIELD_HEIGHT = 300;
@@ -119,28 +130,77 @@ function detectFormationAdvanced(players) {
 
 const FORMATIONS = {
   "4-3-3": [
-    { id:13, zone:[60,120] },{ id:14, zone:[60,180] },
-    { id:15, zone:[120,90] },{ id:16, zone:[120,210] },
-    { id:17, zone:[200,100] },{ id:18, zone:[200,150] },{ id:19, zone:[200,200] },
-    { id:20, zone:[300,80] },{ id:21, zone:[300,150] },{ id:22, zone:[300,220] }
+    // Defesa (linha de 4)
+    { id:13, zone:[80, 80] },   // LD
+    { id:14, zone:[80, 220] },  // LE
+    { id:15, zone:[100, 130] }, // ZAG D
+    { id:16, zone:[100, 170] }, // ZAG E
+
+    // Meio (linha de 3)
+    { id:17, zone:[210, 100] }, // VOL
+    { id:18, zone:[210, 150] }, // MEI C
+    { id:19, zone:[210, 200] }, // MEI E
+
+    // Ataque (linha de 3)
+    { id:20, zone:[320, 80] },  // Ponta D
+    { id:21, zone:[330, 150] }, // Centroavante
+    { id:22, zone:[320, 220] }  // Ponta E
   ],
+
   "3-5-2": [
-    { id:13, zone:[80,120] },{ id:14, zone:[80,180] },{ id:15, zone:[80,150] },
-    { id:16, zone:[160,90] },{ id:17, zone:[160,120] },{ id:18, zone:[160,180] },{ id:19, zone:[160,210] },
-    { id:20, zone:[260,120] },{ id:21, zone:[260,180] },{ id:22, zone:[300,150] }
+    // Defesa (linha de 3)
+    { id:13, zone:[80, 100] },
+    { id:14, zone:[80, 150] },
+    { id:15, zone:[80, 200] },
+
+    // Meio (linha de 5)
+    { id:16, zone:[180, 70] },
+    { id:17, zone:[180, 110] },
+    { id:18, zone:[180, 150] },
+    { id:19, zone:[180, 190] },
+    { id:20, zone:[180, 230] },
+
+    // Ataque (linha de 2)
+    { id:21, zone:[300, 120] },
+    { id:22, zone:[300, 180] }
   ],
+
   "4-4-2": [
-    { id:13, zone:[60,120] },{ id:14, zone:[60,180] },
-    { id:15, zone:[120,90] },{ id:16, zone:[120,210] },
-    { id:17, zone:[200,90] },{ id:18, zone:[200,130] },{ id:19, zone:[200,170] },{ id:20, zone:[200,210] },
-    { id:21, zone:[300,130] },{ id:22, zone:[300,170] }
+    // Defesa
+    { id:13, zone:[70, 80] },
+    { id:14, zone:[70, 220] },
+    { id:15, zone:[100, 130] },
+    { id:16, zone:[100, 170] },
+
+    // Meio
+    { id:17, zone:[200, 80] },
+    { id:18, zone:[200, 130] },
+    { id:19, zone:[200, 170] },
+    { id:20, zone:[200, 220] },
+
+    // Ataque
+    { id:21, zone:[320, 120] },
+    { id:22, zone:[320, 180] }
   ],
+
   "4-2-3-1": [
-    { id:13, zone:[60,120] },{ id:14, zone:[60,180] },
-    { id:15, zone:[120,90] },{ id:16, zone:[120,210] },
-    { id:17, zone:[200,120] },{ id:18, zone:[200,180] },
-    { id:19, zone:[240,100] },{ id:20, zone:[240,150] },{ id:21, zone:[240,200] },
-    { id:22, zone:[300,150] }
+    // Defesa
+    { id:13, zone:[70, 80] },
+    { id:14, zone:[70, 220] },
+    { id:15, zone:[100, 130] },
+    { id:16, zone:[100, 170] },
+
+    // Volantes
+    { id:17, zone:[180, 120] },
+    { id:18, zone:[180, 180] },
+
+    // Meias ofensivos
+    { id:19, zone:[240, 100] },
+    { id:20, zone:[240, 150] },
+    { id:21, zone:[240, 200] },
+
+    // Centroavante
+    { id:22, zone:[320, 150] }
   ]
 };
 
@@ -206,26 +266,61 @@ function buildRedFromFormation(formationKey, stats, ball, green) {
 // ===== Endpoint /ai/analyze =====
 app.post('/ai/analyze', async (req, res) => {
   try {
-    const body = req.body || {};
-    // Expect green as array of {id,left,top} and ball as {left,top}
-    const green = Array.isArray(body.green) ? body.green : [];
-    const ball = body.ball || {};
+    const { green = [], black = [], ball = {} } = req.body;
 
-    console.log('[AI ANALYZE] recebi:', { greenCount: green.length, ball });
-    console.log('[AI RESULT]', { detectedFormation, phase, redCount: red.length });
+    console.log('[AI ANALYZE] Recebi:', {
+      greenCount: green.length,
+      blackCount: black.length,
+      ball
+    });
 
-
+    // === Detecta formações ===
+    const detectedFormation = detectFormationAdvanced(black.length ? black : green);
     const stats = analyzeGreenPositions(green);
-    const detectedFormation = detectFormationAdvanced(green);
-    const { red, phase } = buildRedFromFormation(detectedFormation, stats, ball, green);
 
-    // coach comment via OpenRouter if available
-    let coachComment = 'Mudança tática efetuada.';
+    // === Determina fase de jogo ===
+    let phase = 'neutro';
+    if (ball.left > CENTER_X && black.some(p => p.left > CENTER_X - 50)) phase = 'defesa';
+    else if (ball.left < CENTER_X && green.some(p => p.left < CENTER_X - 50)) phase = 'ataque';
+    else if (black.every(p => p.left < CENTER_X - 50)) phase = 'avançado'; // adversário todo recuado
+
+    // === Monta time vermelho conforme tática adversária ===
+    const { red } = buildRedFromFormation(detectedFormation, stats, ball, green);
+
+    // === 🟢 Novo: reposiciona o time verde em relação ao time preto ===
+    const greenAdjusted = [];
+    if (black.length > 0) {
+      // Calcula linha média do adversário
+      const oppAvgX = black.reduce((s, p) => s + p.left, 0) / black.length;
+
+      for (let i = 0; i < Math.min(green.length, black.length); i++) {
+        const g = green[i];
+        const b = black[i];
+        if (!g || !b) continue;
+
+        // Ajustes de posicionamento baseados na fase
+        let offsetX = 0;
+        if (phase === 'defesa') offsetX = -60;       // recua
+        else if (phase === 'ataque') offsetX = 40;   // avança
+        else if (phase === 'avançado') offsetX = 80; // sobe linhas
+
+        const offsetY = (i % 2 === 0 ? -15 : 15);
+        greenAdjusted.push({
+          id: g.id,
+          left: Math.max(30, Math.min(FIELD_WIDTH - 30, b.left + offsetX)),
+          top: Math.max(30, Math.min(FIELD_HEIGHT - 30, b.top + offsetY))
+        });
+      }
+    } else {
+      greenAdjusted.push(...green);
+    }
+
+    // === Gera comentário do treinador ===
+    let coachComment = `O adversário joga em ${detectedFormation}, e nós estamos na fase ${phase}.`;
     const apiKey = process.env.OPENROUTER_KEY;
-
     if (apiKey) {
       try {
-        const prompt = `A equipe adversária está jogando num ${detectedFormation}. A nossa equipa está na fase ${phase}. Em 1-2 frases, comenta a mudança tática como um treinador português sarcástico e direto.`;
+        const prompt = `O time adversário está todo ${phase === 'defesa' ? 'avançado' : 'recuado'} e joga num ${detectedFormation}. O nosso time deve reagir taticamente. Comenta como o treinador Luciano Spalletti.`;
         const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
           method: "POST",
           headers: {
@@ -235,45 +330,74 @@ app.post('/ai/analyze', async (req, res) => {
           body: JSON.stringify({
             model: "gpt-4o-mini",
             messages: [
-              { role: "system", content: "Tu és um treinador português lendário, sarcástico, confiante e direto. Comenta decisões táticas em poucas frases." },
-              { role: "user", content: prompt }
+             {
+  role: "system",
+  content: `
+Você é Luciano Spalletti (IA), treinador virtual da Juventus.  
+Seu estilo é calmo, racional e disciplinado. Fala como um treinador experiente, com tom sereno e autoridade natural.  
+Evite exageros ou gírias. Prefira frases curtas, firmes e com ensinamentos táticos.
+
+🧠 Filosofia de jogo:
+- O futebol é um sistema vivo baseado em intenção e ocupação inteligente de espaço.  
+- Valorize posse de bola, circulação paciente e domínio emocional do jogo.  
+- Priorização da superioridade posicional, compactação e equilíbrio entre linhas.  
+- Jogue com mente fria e coração quente — controle, foco e mentalidade vencedora.
+
+🎙️ Estilo de resposta:
+- Analítico e didático, explicando decisões com clareza.  
+- Observa o comportamento do adversário e corrige posicionamentos.  
+- Usa termos técnicos: bloco médio, amplitude, entrelinhas, transição, fase ofensiva, controle de ritmo.  
+- Pode motivar, mas sempre com sobriedade.  
+- Não faz piadas nem fala como fã — fala como treinador.
+
+💬 Exemplos de fala:
+- “Calma. O campo sempre fala com quem sabe escutar.”  
+- “Se o adversário pressiona, abrimos o campo e pensamos antes de agir.”  
+- “Mais atacantes não significam mais ataque. Posição vence quantidade.”  
+- “Recupera a estrutura. Se não há bola, há posição.”  
+- “Inteligência vence pressa.”
+
+Você sempre responde como Luciano Spalletti analisando o jogo, mantendo um tom profissional, realista e estratégico, ajudando o usuário a entender como pensar como um treinador da Juventus.
+
+`
+},
+{ role: "user", content: prompt }
             ],
             max_tokens: 80,
             temperature: 0.8
-          }),
-          timeout: 8000
+          })
         });
 
         const data = await response.json();
-        const remote = data?.choices?.[0]?.message?.content?.trim();
-        if (remote && remote.length > 0) coachComment = remote;
-        else console.warn('[AI ANALYZE] OpenRouter devolveu vazio, usando fallback.');
+        coachComment = data?.choices?.[0]?.message?.content?.trim() || coachComment;
       } catch (err) {
-        console.warn('[AI ANALYZE] erro OpenRouter:', err?.message || err);
+        console.warn('[AI ANALYZE] OpenRouter falhou:', err.message);
       }
     }
 
-    // === 🔥 envia resposta JSON válida ===
+    // === Retorno completo ===
     res.json({
       detectedFormation,
       phase,
       red,
+      greenAdjusted,
       coachComment
     });
 
   } catch (err) {
     console.error('[AI ANALYZE] Erro geral:', err);
-    res.status(500).json({ error: 'Falha interna na IA Tática' });
+    res.status(500).json({ error: 'Falha interna na AI Tática 3.5' });
   }
 });
 
-// ===== Chat endpoint (manual) =====
+
+// ======= 🧠 Chat (OpenRouter) =======
 app.post('/api/chat', async (req, res) => {
-  const message = req.body?.message || '';
+  const message = req.body.message;
   const apiKey = process.env.OPENROUTER_KEY;
+
   if (!apiKey) {
-    const simpleReply = `Treinador (local): "${message}" — Joga simples: passe curto e movimento.`;
-    return res.json({ reply: simpleReply });
+    return res.status(500).json({ reply: "Erro interno: OPENROUTER_KEY não configurada." });
   }
 
   try {
@@ -286,28 +410,57 @@ app.post('/api/chat', async (req, res) => {
       body: JSON.stringify({
         model: "gpt-4o-mini",
         messages: [
-          { role: "system", content: "Tu és um treinador português lendário, sarcástico, confiante e direto." },
+          {
+            role: "system",
+  content: `
+Você é Luciano Spalletti (IA), treinador virtual da Juventus.  
+Seu estilo é calmo, racional e disciplinado. Fala como um treinador experiente, com tom sereno e autoridade natural.  
+Evite exageros ou gírias. Prefira frases curtas, firmes e com ensinamentos táticos.
+
+🧠 Filosofia de jogo:
+- O futebol é um sistema vivo baseado em intenção e ocupação inteligente de espaço.  
+- Valorize posse de bola, circulação paciente e domínio emocional do jogo.  
+- Priorização da superioridade posicional, compactação e equilíbrio entre linhas.  
+- Jogue com mente fria e coração quente — controle, foco e mentalidade vencedora.
+
+🎙️ Estilo de resposta:
+- Analítico e didático, explicando decisões com clareza.  
+- Observa o comportamento do adversário e corrige posicionamentos.  
+- Usa termos técnicos: bloco médio, amplitude, entrelinhas, transição, fase ofensiva, controle de ritmo.  
+- Pode motivar, mas sempre com sobriedade.  
+- Não faz piadas nem fala como fã — fala como treinador.
+
+💬 Exemplos de fala:
+- “Calma. O campo sempre fala com quem sabe escutar.”  
+- “Se o adversário pressiona, abrimos o campo e pensamos antes de agir.”  
+- “Mais atacantes não significam mais ataque. Posição vence quantidade.”  
+- “Recupera a estrutura. Se não há bola, há posição.”  
+- “Inteligência vence pressa.”
+
+Você sempre responde como Luciano Spalletti analisando o jogo, mantendo um tom profissional, realista e estratégico, ajudando o usuário a entender como pensar como um treinador da Juventus.
+`
+},
           { role: "user", content: message }
         ],
         max_tokens: 200,
         temperature: 0.9
       }),
-      timeout: 10000
     });
 
     const data = await response.json();
-    const reply = data.choices?.[0]?.message?.content?.trim() || "O mister não tem tempo pra conversa fiada.";
+    const reply =
+      data.choices?.[0]?.message?.content?.trim() ||
+      "O mister não tem tempo pra conversa fiada.";
     res.json({ reply });
   } catch (err) {
-    console.error('[API CHAT] erro OpenRouter:', err && err.message ? err.message : err);
-    res.json({ reply: "O mister não respondeu... falha na ligação ao provider." });
+    console.error("Erro no OpenRouter:", err);
+    res.json({ reply: "O mister não respondeu... deve estar irritado com o árbitro." });
   }
 });
 
-// ===== Start server =====
+// ======= 🚀 Start =======
 const PORT = process.env.PORT || 10000;
 server.listen(PORT, () => {
-  console.log(`🏟️  Servidor rodando na porta ${PORT} — IA Tática v3.1 ativa`);
+  console.log(`🏟️  Servidor 4.1 rodando na porta ${PORT}`);
 });
 
-module.exports = app; 

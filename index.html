@@ -1,13 +1,22 @@
 <!DOCTYPE html>
-<html>
+<html lang="pt-BR">
 <head>
     <meta charset="UTF-8">
     <title>OS INVICTOS -- Campo Tático Interativo</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta property="og:title" content="CAMPO TÁTICO — DOS CAMPEÕES INVICTOS">
+    <meta property="og:description" content="Os maiores campeões invictos do futebol mundial">
+    <meta property="og:image" content="https://www.osinvictos.com.br/assets/juventus-previa.png">
     <link rel="stylesheet" href="styles.css">
     <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
 </head>
-<body style="background-image:url('img/estadium.jpg'); background-size:cover;">
+<body style="
+  background-image: url('img/estadium.jpg');
+  background-size: cover;
+  background-repeat: no-repeat;
+  background-position: center;
+  background-attachment: fixed;
+">
 
   <!-- ===== Campo Tático ===== -->
     <div id="background-square" class="background-square"></div>
@@ -69,12 +78,17 @@
   </div>
 
   <button id="exit-fullscreen-btn" style="position:fixed;top:330px;left:20px;z-index:10000;">Sair (x)</button>
-  <button id="ai-analise-btn" style="position:fixed;top:330px;left:120px;z-index:10000;">AI Análise</button>
+  <button id="ai-analise-btn" style="position:fixed;top:330px;left:120px;z-index:10000;">Análise IA</button>
   <button id="pen-path-btn" style="position:fixed;top:330px;left:302px;z-index:10000;">✎ Desenho Tático</button>
 
 <script>
+
+const SERVER_URL = window.location.origin;
+
 /* ===== CORE: movimento, socket e AI analyze ===== */
-const socket = io("https://juventusfc.onrender.com");
+const socket = io("https://juventusfc.onrender.com", {
+  transports: ["websocket", "polling"]
+});
 window.socket = socket;
 
 const circles = {};
@@ -227,52 +241,112 @@ function setPositions(red) {
 }
 
 
+function updateTacticalStatus(info) {
+  const panel = document.getElementById('tactical-status');
+  if (!panel) return;
+
+  // Limpa painel se não houver info
+  if (!info) {
+    panel.style.display = 'none';
+    return;
+  }
+
+  const { detectedFormation, phase, red } = info;
+
+  // === Conteúdo do painel com botão de fechar ===
+  panel.innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:center;">
+      <strong>📊 Situação Tática</strong>
+      <button id="close-tactical-panel"
+        style="
+          background:transparent;
+          border:none;
+          color:#fff;
+          font-size:16px;
+          font-weight:bold;
+          cursor:pointer;
+          margin-left:8px;
+        "
+        title="Fechar painel">×</button>
+    </div>
+    <hr style="border:0;border-top:1px solid rgba(255,255,255,0.2);margin:6px 0;">
+    <b>📋 Tática:</b> ${detectedFormation || '---'}<br>
+    <b>🧭 Fase:</b> ${phase || '---'}<br>
+    <b>⚫ Jogadores:</b> ${(red && red.length) || 0}
+  `;
+
+  panel.style.display = 'block';
+
+  // === Evento do botão de fechar ===
+  const closeBtn = document.getElementById('close-tactical-panel');
+  if (closeBtn) {
+    closeBtn.addEventListener('click', () => {
+      panel.style.opacity = '0';
+      setTimeout(() => {
+        panel.style.display = 'none';
+        panel.style.opacity = '1';
+      }, 300);
+    });
+  }
+}
+
+
 function showNotification(msg, bg="#33aaff"){
   const n = document.getElementById('ai-notification');
   n.textContent = msg;
   n.style.background = bg;
   n.style.display = 'block';
   n.style.opacity = '1';
-  setTimeout(()=>{ n.style.opacity = '0'; }, 3800);
-  setTimeout(()=>{ n.style.display = 'none'; }, 4600);
+  setTimeout(()=>{ n.style.opacity = '0'; }, 9500);
+  setTimeout(()=>{ n.style.display = 'none'; }, 10500);
 }
 
 document.getElementById('ai-analise-btn').addEventListener('click', async function(){
   const btn = this;
   btn.disabled = true;
   btn.textContent = 'Analisando... ⚙️';
-  
+
   try {
     const green = collectGreenPositions();
     const ball = getBall();
-    const res = await fetch('https://juventusfc.onrender.com/ai/analyze', {
+
+    const res = await fetch(`https://juventusfc.onrender.com/ai/analyze`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ green, ball })
     });
+
+    if (!res.ok) throw new Error(`Server returned ${res.status}`);
+
     const data = await res.json();
 
-    // 🟢 Mostra primeiro a tática detectada (antes da movimentação)
+    // ✅ Atualiza painel tático
+    updateTacticalStatus(data);
+
+    // 🟢 Mostra tática detectada
     if (data.detectedFormation) {
       showNotification('📋 Tática detectada: ' + data.detectedFormation, "#1E90FF");
-      await new Promise(r => setTimeout(r, 900)); // pequeno delay pra suavizar
+      // Aguarda um pouco antes de mover
+      await new Promise(r => setTimeout(r, 900));
     }
 
-    // 🔴 Move o time (vermelho) para as novas posições
+    // 🔴 Move o time
     if (data.red) setPositions(data.red);
 
-    // 🧠 Comentário do mister
+    // 💬 Comentário do Mister
     if (data.coachComment)
       showNotification('🧠 ' + data.coachComment, "#0066cc");
 
   } catch (err) {
     console.error('AI analyze error', err);
+    updateTacticalStatus(null);
     showNotification('❌ Erro na análise tática', "#cc0000");
   } finally {
     btn.disabled = false;
     btn.textContent = 'AI Análise';
   }
 });
+
 
 
 /* ===== Desenho tático (canvas) ===== */
@@ -423,9 +497,10 @@ document.addEventListener("fullscreenchange", () => {
   background:rgba(0,0,0,0.8);color:#fff;border-radius:10px;
   display:flex;flex-direction:column;overflow:hidden;z-index:10001;
   font-family:'Segoe UI',sans-serif;font-size:14px;">
-  <div id="chat-header" style="background:#222;padding:10px;cursor:pointer;font-weight:600;">
-    💬 José Mourinho (IA)
-  </div>
+<div id="chat-header" style="background:#222;padding:10px;cursor:pointer;font-weight:600;display:flex;align-items:center;gap:8px;color:#fff;">
+  <img src="../../assets/escudo-juventus.png" alt="Luciano Spalletti" style="width:24px;height:24px;border-radius:50%;">
+  Luciano Spalletti (IA)
+</div>
   <div id="chat-body" style="flex:1;overflow-y:auto;padding:10px;display:none;"></div>
   <div id="chat-input-area" style="display:none;border-top:1px solid #333;padding:6px;gap:4px;">
     <input id="chat-input" type="text" placeholder="Fala com o mister..." 
@@ -484,7 +559,7 @@ chatHeader.addEventListener("click", () => {
 // ----------------------------------------------------
 // 3. Funções de Chat e API (Permanece quase igual)
 // ----------------------------------------------------
-const url_render = 'https://juventusfc.onrender.com';
+const url_render = 'https://juventusjc.onrender.com';
 
 function appendMessage(sender, text){
     // ... (sua função appendMessage)
@@ -504,7 +579,7 @@ chatSend.addEventListener("click", async ()=>{
     chatInput.value = "";
     try {
         // Correção de sintaxe anterior: use '+' para concatenar a URL
-        const res = await fetch(url_render + '/api/chat',{
+        const res = await fetch(`https://racingclub.onrender.com/api/chat`, {
             method:"POST",
             headers:{ "Content-Type":"application/json" },
             body: JSON.stringify({ message })
@@ -521,7 +596,23 @@ chatInput.addEventListener("keydown", (e)=>{
     if(e.key==="Enter"){ chatSend.click(); }
 });
 </script>
+<div id="tactical-status" style="
+  position:fixed;
+  top:20px;
+  right:20px;
+  background:rgba(0,0,0,0.8);
+  color:#fff;
+  padding:14px 16px;
+  border-radius:10px;
+  font-family:'Segoe UI',sans-serif;
+  font-size:14px;
+  z-index:10002;
+  min-width:220px;
+  line-height:1.5;
+  box-shadow:0 0 8px rgba(0,0,0,0.3);
+  display:none;
+  transition:opacity 0.3s ease;
+"></div>
 
 </body>
 </html>
-
