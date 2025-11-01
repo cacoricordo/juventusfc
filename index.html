@@ -688,7 +688,7 @@ chatHeader.addEventListener("click", () => {
 // ----------------------------------------------------
 // 3. Funções de Chat e API (Permanece quase igual)
 // ----------------------------------------------------
-const url_render = 'https://guaranifc.onrender.com';
+const url_render = 'https://juventusfc.onrender.com';
 
 function appendMessage(sender, text){
     // ... (sua função appendMessage)
@@ -707,7 +707,7 @@ chatSend.addEventListener("click", async ()=>{
     appendMessage("user", message);
     chatInput.value = "";
     try {
-        const res = await fetch(`https://guaranifc.onrender.com/api/chat`, {
+        const res = await fetch(`https://juventusfc.onrender.com/api/chat`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
